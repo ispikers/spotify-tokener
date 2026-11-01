@@ -53,7 +53,7 @@ func main() {
 	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(slog.Debug))
 	defer cancel()
 
-	if err := chromedp.Run(ctx); err != nil {
+	if err := chromedp.Do(ctx); err != nil {
 		slog.Error("Failed to run chromedp", slog.Any("err", err))
 	}
 

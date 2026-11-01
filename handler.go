@@ -177,57 +177,42 @@ func (s *server) getAccessTokenPayload(rCtx context.Context, cookies []*network.
 
 	defer context.AfterFunc(rCtx, cancel)()
 
-	var tokenRequestID network.RequestID
-	requestIDChan := make(chan network.RequestID, 1)
+	responses := chromedp.Events(ctx, network.ResponseReceived)
+	finished := chromedp.Events(ctx, network.LoadingFinished)
 
-	chromedp.ListenTarget(ctx, func(ev any) {
-		switch ev := ev.(type) {
-		case *network.EventResponseReceived:
-			if strings.HasPrefix(ev.Response.URL, spotifyTokenURL) {
-				tokenRequestID = ev.RequestID
-			}
-		case *network.EventLoadingFinished:
-			if ev.RequestID != tokenRequestID {
-				return
-			}
-			select {
-			case requestIDChan <- ev.RequestID:
-			default:
-			}
-		}
-	})
-
-	if err := chromedp.Run(ctx,
-		network.SetCookies(cookies),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			_, _, errorText, err := page.Navigate(spotifyURL).Do(ctx)
-			if err != nil {
-				return err
-			}
-			if errorText != "" {
-				return fmt.Errorf("failed to navigate: %s", errorText)
-			}
-			return nil
-		}),
-	); err != nil {
+	if _, err := chromedp.Call(ctx, network.SetCookies, network.SetCookiesParams{Cookies: cookies}); err != nil {
 		return nil, err
+	}
+	nav, err := chromedp.Call(ctx, page.Navigate, page.NavigateParams{URL: spotifyURL})
+	if err != nil {
+		return nil, err
+	}
+	if nav.ErrorText != "" {
+		return nil, fmt.Errorf("failed to navigate: %s", nav.ErrorText)
 	}
 
 	var requestID network.RequestID
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case requestID = <-requestIDChan:
+	for ev, err := range responses {
+		if err != nil {
+			return nil, err
+		}
+		if strings.HasPrefix(ev.Response.URL, spotifyTokenURL) {
+			requestID = ev.RequestID
+			break
+		}
+	}
+	for ev, err := range finished {
+		if err != nil {
+			return nil, err
+		}
+		if ev.RequestID == requestID {
+			break
+		}
 	}
 
-	var body []byte
-	if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
-		var err error
-		body, err = network.GetResponseBody(requestID).Do(ctx)
-		return err
-	})); err != nil {
+	res, err := chromedp.Call(ctx, network.GetResponseBody, network.GetResponseBodyParams{RequestID: requestID})
+	if err != nil {
 		return nil, err
 	}
-
-	return body, nil
+	return res.Body, nil
 }
