@@ -20,6 +20,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 
 FROM chromedp/headless-shell
 
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /build/spotify-tokener /bin/spotify-tokener
 
 ENTRYPOINT ["/bin/spotify-tokener"]
