@@ -74,8 +74,9 @@ func main() {
 
 	mux.HandleFunc("/api/token", s.handleToken)
 
-	s.refreshSecret()
-	go s.secretLoop()
+	if _, err := s.refreshSecret(ctx); err != nil {
+		slog.Error("Failed to load totp secret", slog.Any("err", err))
+	}
 	go s.refreshLoop()
 	go s.Start()
 	defer s.Stop()

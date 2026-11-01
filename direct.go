@@ -18,9 +18,8 @@ import (
 )
 
 const (
-	secretsURL            = "https://code.thetadev.de/ThetaDev/spotify-secrets/raw/branch/main/secrets/secretDict.json"
-	secretRefreshInterval = time.Hour
-	directTimeout         = 5 * time.Second
+	secretsURL    = "https://code.thetadev.de/ThetaDev/spotify-secrets/raw/branch/main/secrets/secretDict.json"
+	directTimeout = 5 * time.Second
 )
 
 type totpSecret struct {
@@ -29,42 +28,33 @@ type totpSecret struct {
 }
 
 func (s *server) getDirectAccessTokenPayload(ctx context.Context, cookies []*http.Cookie) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, directTimeout)
-	defer cancel()
-
 	secret := s.secret.Load()
-	if secret == nil {
-		return nil, errors.New("no totp secret loaded")
+	var err error
+	if secret != nil {
+		var body []byte
+		if body, err = requestToken(ctx, secret, cookies); err == nil {
+			return body, nil
+		}
 	}
-	return requestToken(ctx, secret, cookies)
+
+	latest, refreshErr := s.refreshSecret(ctx)
+	if refreshErr != nil {
+		return nil, errors.Join(err, refreshErr)
+	}
+	if secret != nil && latest.version == secret.version {
+		return nil, err
+	}
+	return requestToken(ctx, latest, cookies)
 }
 
-func (s *server) secretLoop() {
-	for {
-		wait := secretRefreshInterval
-		if s.secret.Load() == nil {
-			wait = retryDelay
-		}
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-time.After(wait):
-		}
-		s.refreshSecret()
-	}
-}
-
-func (s *server) refreshSecret() {
-	ctx, cancel := context.WithTimeout(s.ctx, directTimeout)
-	defer cancel()
-
+func (s *server) refreshSecret(ctx context.Context) (*totpSecret, error) {
 	secret, err := latestSecret(ctx)
 	if err != nil {
-		slog.Error("Failed to refresh totp secret", slog.Any("err", err))
-		return
+		return nil, fmt.Errorf("failed to refresh totp secret: %w", err)
 	}
 	s.secret.Store(secret)
-	slog.Info("Refreshed totp secret", slog.Int("version", secret.version))
+	slog.InfoContext(ctx, "Refreshed totp secret", slog.Int("version", secret.version))
+	return secret, nil
 }
 
 func requestToken(ctx context.Context, secret *totpSecret, cookies []*http.Cookie) ([]byte, error) {
@@ -110,6 +100,9 @@ func latestSecret(ctx context.Context) (*totpSecret, error) {
 }
 
 func get(ctx context.Context, rawURL string, cookies []*http.Cookie) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, directTimeout)
+	defer cancel()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, http.NoBody)
 	if err != nil {
 		return nil, err
