@@ -11,7 +11,7 @@ For god's sake, just use docker. Otherwise, have fun compiling yourself:
 Requirements:
 
 * [go 1.24+](https://go.dev/doc/install)
-* [chrome](https://www.google.com/chrome/)
+* [chrome](https://www.google.com/chrome/) (only used as a fallback)
 
 ```bash
 go install github.com/topi314/spotify-tokener@master
@@ -41,6 +41,8 @@ services:
 ## Usage
 
 The endpoint is under `/api/token` and cookies are relayed 1:1 (like the sp_dc cookie for account login).
+
+Tokens are fetched directly using TOTP secrets from [spotify-secrets](https://code.thetadev.de/ThetaDev/spotify-secrets), falling back to headless Chrome. Outbound access to `code.thetadev.de` and `open.spotify.com` is required.
 
 ## License
 

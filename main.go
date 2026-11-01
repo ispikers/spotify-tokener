@@ -7,6 +7,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
 
 	"github.com/chromedp/chromedp"
 )
@@ -14,6 +18,7 @@ import (
 const (
 	spotifyURL      = "https://open.spotify.com"
 	spotifyTokenURL = spotifyURL + "/api/token"
+	userAgent       = "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
 )
 
 var (
@@ -41,15 +46,14 @@ func main() {
 	if chromePath != "" {
 		execAllocatorOptions = append(execAllocatorOptions, chromedp.ExecPath(chromePath))
 	}
-	execAllocatorOptions = append(execAllocatorOptions, chromedp.UserAgent("Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"))
-	// execAllocatorOptions = append(execAllocatorOptions, chromedp.Flag("headless", false))
+	execAllocatorOptions = append(execAllocatorOptions, chromedp.UserAgent(userAgent))
 
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), execAllocatorOptions...)
 	defer allocCancel()
 	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(slog.Debug))
 	defer cancel()
 
-	if err := chromedp.Run(ctx, chromedp.Navigate(spotifyURL)); err != nil {
+	if err := chromedp.Run(ctx); err != nil {
 		slog.Error("Failed to run chromedp", slog.Any("err", err))
 	}
 
@@ -63,21 +67,36 @@ func main() {
 		},
 	}
 
+	s.fetch = func(ctx context.Context) ([]byte, error) {
+		return s.accessTokenPayload(ctx, nil)
+	}
+
 	mux.HandleFunc("/api/token", s.handleToken)
 
+	s.refreshSecret()
+	go s.secretLoop()
+	go s.refreshLoop()
 	go s.Start()
 	defer s.Stop()
 
 	slog.Info("Server started", slog.String("address", s.server.Addr))
 	defer slog.Info("Server stopped")
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, os.Kill)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	<-sig
 }
 
 type server struct {
 	ctx    context.Context
 	server *http.Server
+	fetch  func(context.Context) ([]byte, error)
+	secret atomic.Pointer[totpSecret]
+
+	mu         sync.Mutex
+	token      []byte
+	expires    time.Time
+	refreshErr error
+	refreshing chan struct{}
 }
 
 func (s *server) Start() {
