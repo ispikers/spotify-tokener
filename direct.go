@@ -109,8 +109,8 @@ func latestSecret(ctx context.Context) (*totpSecret, error) {
 	return latest, nil
 }
 
-func get(ctx context.Context, url string, cookies []*http.Cookie) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func get(ctx context.Context, rawURL string, cookies []*http.Cookie) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, http.NoBody)
 	if err != nil {
 		return nil, err
 	}

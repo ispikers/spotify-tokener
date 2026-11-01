@@ -1,0 +1,47 @@
+version: "2"
+
+linters:
+    enable:
+        - bodyclose
+        - durationcheck
+        - errorlint
+        - fatcontext
+        - gocritic
+        - gosec
+        - intrange
+        - misspell
+        - modernize
+        - musttag
+        - nilerr
+        - noctx
+        - perfsprint
+        - prealloc
+        - sloglint
+        - unconvert
+        - unparam
+        - usestdlibvars
+        - wastedassign
+    settings:
+        gocritic:
+            enabled-tags:
+                - diagnostic
+                - performance
+                - style
+        gosec:
+            excludes:
+                - G101
+                - G115
+                - G505
+                - G705
+        govet:
+            enable-all: true
+            disable:
+                - fieldalignment
+    exclusions:
+        presets:
+            - std-error-handling
+
+formatters:
+    enable:
+        - gofmt
+        - goimports

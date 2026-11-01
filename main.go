@@ -62,8 +62,9 @@ func main() {
 	s := &server{
 		ctx: ctx,
 		server: &http.Server{
-			Addr:    addr,
-			Handler: mux,
+			Addr:              addr,
+			Handler:           mux,
+			ReadHeaderTimeout: 10 * time.Second,
 		},
 	}
 
